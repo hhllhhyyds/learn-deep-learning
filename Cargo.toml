@@ -5,3 +5,4 @@ edition = "2021"
 
 [dependencies]
 candle-core = { version = "0.8.0", features = ["metal"] }
+polars = {version = "0.44", features = ["lazy", "ndarray"]}
