@@ -55,7 +55,7 @@ NA,NA,140000"#
                 .fill_null(col("NumRooms").mean())
                 .alias("NumRooms"),
             when(col("RoofType").is_null())
-                .then(0_)
+                .then(0)
                 .otherwise(1)
                 .cast(DataType::Float32)
                 .alias("RoofType_Slate"),
