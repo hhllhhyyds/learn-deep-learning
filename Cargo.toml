@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-candle-core = { version = "0.8.0", features = ["metal"] }
+candle-core = { version = "0.8.0", features = ["cuda"] }
 candle-datasets = "0.8.0"
-candle-nn = { version = "0.8.0", features = ["metal"] }
+candle-nn = { version = "0.8.0", features = ["cuda"] }
 polars = {version = "0.44", features = ["lazy", "ndarray"]}
 rand = "0.8.5"

@@ -143,7 +143,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let step_count = args[1].parse::<usize>()?;
     println!("run {} steps", step_count);
 
-    let device = Arc::new(Device::new_metal(0)?);
+    let device = Arc::new(Device::new_cuda(0)?);
 
     let data =
         SyntheticRegressionDataBuilder::new(Tensor::from_slice(&[2f32, -3.4], (2, 1), &device)?)

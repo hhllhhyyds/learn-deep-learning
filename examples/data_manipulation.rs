@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let g = g.reshape((3, 4))?;
 
-    let gpu = Device::new_metal(0)?;
+    let gpu = Device::new_cuda(0)?;
     let x = Tensor::arange::<f32>(0., 12., &gpu)?;
     println!("metal x = {x}");
 

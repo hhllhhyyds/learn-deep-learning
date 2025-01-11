@@ -2,7 +2,7 @@ use candle_core::{Device, Tensor, Var};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     // let device = &Device::Cpu;
-    let device = &Device::new_metal(0)?;
+    let device = &Device::new_cuda(0)?;
 
     let x = Var::from_tensor(&Tensor::arange(0.0_f32, 4.0, device)?.reshape(4)?)?;
 

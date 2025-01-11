@@ -5,7 +5,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("{:?}", args);
 
     let cpu = &Device::Cpu;
-    let gpu = &Device::new_metal(0)?;
+    let gpu = &Device::new_cuda(0)?;
 
     let n = args[1].parse::<usize>()?;
     let a_arr = (n..(2 * n)).map(|i| i as f32).collect::<Vec<f32>>();
