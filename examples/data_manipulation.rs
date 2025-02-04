@@ -1,88 +1,152 @@
+#[cfg(test)]
 use candle_core::{Device, Tensor};
 
+#[test]
+fn show_array() {
+    let arr_i64 = Tensor::arange::<i64>(0, 12, &Device::Cpu).unwrap();
+    println!("array i64 element count = {}", arr_i64.elem_count());
+
+    let arr_f64 = Tensor::arange::<f64>(0., 12., &Device::new_cuda(0).unwrap()).unwrap();
+    println!("array f64 element count = {}", arr_f64.elem_count());
+
+    println!("array f64 shape = {:#?}", arr_f64.shape());
+
+    let arr_f64_reshaped = arr_f64.reshape((4, 3)).unwrap();
+    println!("array f64 reshaped shape = {:#?}", arr_f64_reshaped.shape());
+}
+
+#[test]
+fn all_zero_one_array() {
+    let gpu_device = Device::new_cuda(0).unwrap();
+
+    let zero_arr = Tensor::zeros((2, 3, 4), candle_core::DType::F32, &gpu_device).unwrap();
+    println!("zero arr = \n{}", zero_arr);
+
+    let one_arr = Tensor::ones((2, 3, 4), candle_core::DType::F32, &gpu_device).unwrap();
+    println!("one arr = \n{}", one_arr);
+}
+
+#[test]
+fn randn_array() {
+    let gpu_device = Device::new_cuda(0).unwrap();
+
+    let randn_arr = Tensor::randn(0., 1., (3, 4), &gpu_device).unwrap();
+    println!("randn arr = \n{}", randn_arr);
+}
+
+#[test]
+fn exact_array() {
+    let gpu_device = Device::new_cuda(0).unwrap();
+
+    let exact_arr =
+        Tensor::new(&[[2i64, 1, 4, 3], [1, 2, 3, 4], [4, 3, 2, 1]], &gpu_device).unwrap();
+    println!("exact arr = \n{}", exact_arr);
+}
+
+#[test]
+fn tensor_index_slice() {
+    let gpu_device = Device::new_cuda(0).unwrap();
+
+    let tensor = Tensor::arange::<f64>(0., 12., &gpu_device)
+        .unwrap()
+        .reshape((3, 4))
+        .unwrap();
+
+    println!(
+        "X[-1] = {}",
+        tensor.get(tensor.dim(0).unwrap() - 1).unwrap()
+    );
+
+    println!(
+        "X[1:3] = \n{}",
+        tensor
+            .index_select(&Tensor::arange(1u32, 3, &gpu_device).unwrap(), 0)
+            .unwrap()
+    );
+}
+
+#[test]
+fn unary_ops() {
+    let gpu_device = Device::new_cuda(0).unwrap();
+
+    let tensor = Tensor::arange::<f64>(0., 12., &gpu_device)
+        .unwrap()
+        .reshape((3, 4))
+        .unwrap();
+
+    println!("X.exp() = {}", tensor.exp().unwrap());
+}
+
+#[test]
+fn binary_ops() {
+    let gpu_device = Device::new_cuda(0).unwrap();
+
+    let x = Tensor::arange::<f64>(0., 12., &gpu_device)
+        .unwrap()
+        .reshape((3, 4))
+        .unwrap();
+
+    let y = Tensor::arange::<f64>(-12., 0., &gpu_device)
+        .unwrap()
+        .reshape((3, 4))
+        .unwrap();
+
+    println!("x + y = \n{}", (&x + &y).unwrap());
+    println!("x - y = \n{}", (&x - &y).unwrap());
+    println!("x * y = \n{}", (&x * &y).unwrap());
+    println!("x / y = \n{}", (&x / &y).unwrap());
+
+    println!("x > y = \n{}", (x.gt(&y)).unwrap());
+}
+
+#[test]
+fn tensor_concat() {
+    let gpu_device = Device::new_cuda(0).unwrap();
+
+    let x = Tensor::arange::<f64>(0., 12., &gpu_device)
+        .unwrap()
+        .reshape((3, 4))
+        .unwrap();
+
+    let y = Tensor::arange::<f64>(-12., 0., &gpu_device)
+        .unwrap()
+        .reshape((3, 4))
+        .unwrap();
+
+    println!(
+        "Tensor::cat(&[&x, &y], 0) = \n{}",
+        Tensor::cat(&[&x, &y], 0).unwrap()
+    );
+
+    println!(
+        "Tensor::cat(&[&x, &y], 1) = \n{}",
+        Tensor::cat(&[&x, &y], 1).unwrap()
+    );
+
+    println!("x.sum() = {}", x.sum_all().unwrap());
+}
+
+#[test]
+fn broadcast_ops() {
+    let gpu_device = Device::new_cuda(0).unwrap();
+
+    let x = Tensor::arange::<f64>(1., 4., &gpu_device)
+        .unwrap()
+        .reshape((3, 1))
+        .unwrap();
+
+    let y = Tensor::arange::<f64>(1., 3., &gpu_device)
+        .unwrap()
+        .reshape((1, 2))
+        .unwrap();
+
+    println!("x = \n{}", x);
+    println!("y = \n{}", y);
+
+    let x_bc_add_y = x.broadcast_add(&y).unwrap();
+    println!("x broadcast add y = \n{}", x_bc_add_y);
+}
+
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let cpu = Device::Cpu;
-
-    let g = Tensor::arange::<f32>(0., 12., &cpu)?;
-    println!("cpu g = {g}");
-
-    let g = g.reshape((3, 4))?;
-
-    let gpu = Device::new_cuda(0)?;
-    let x = Tensor::arange::<f32>(0., 12., &gpu)?;
-    println!("metal x = {x}");
-
-    println!("x element count = {}", x.elem_count());
-
-    println!("x shape = {:?}", x.shape());
-
-    let x = x.reshape((3, 4))?;
-
-    println!("x after reshape is\n{}, shape is {:?}", x, x.shape());
-
-    let zeros_tensor = Tensor::zeros((2, 3, 4), candle_core::DType::F32, &cpu)?;
-    println!("tensor zeros:\n{}", zeros_tensor);
-
-    println!(
-        "tensor ones:\n{}",
-        Tensor::ones((2, 3, 4), candle_core::DType::F32, &cpu)?
-    );
-
-    println!("tensor random:\n{}", Tensor::randn(0.0, 1.0, (3, 4), &cpu)?);
-
-    println!(
-        "tensor specified:\n{}",
-        Tensor::new(&[[2_i64, 1, 4, 3], [1, 2, 3, 4], [4, 3, 2, 1]], &cpu)?
-    );
-
-    println!("x[-1] = {:?}", x.get(2)?.to_vec1::<f32>()?);
-    println!(
-        "x[1:3] = {:?}",
-        x.index_select(&Tensor::new(&[1_i64, 2], &gpu)?, 0)?
-            .to_vec2::<f32>()?
-    );
-
-    x.get(1)?.slice_set(&Tensor::new(&[17_f32], &gpu)?, 0, 2)?;
-    println!("x = \n{}", x);
-
-    let y = Tensor::from_slice(&[12_f32; 8], (2, 4), &gpu)?;
-    let x = x.slice_assign(&[0..2, 0..4], &y)?;
-    println!("x = \n{}", x);
-
-    let z = x.to_device(&cpu)?;
-    println!("x exp = \n{}", x.exp()?);
-    println!("z exp = \n{}", z.exp()?);
-
-    let p = Tensor::from_slice(&[1_f32, 2., 4., 8.], (1, 4), &gpu)?;
-    let q = Tensor::from_slice(&[2_f32; 4], (1, 4), &gpu)?;
-
-    println!("p = {p},\nq = {q}");
-
-    println!("p + q = {}", (p.clone() + q.clone())?);
-    println!("p - q = {}", (p.clone() - q.clone())?);
-    println!("p * q = {}", (p.clone() * q.clone())?);
-    println!("p / q = {}", (p.clone() / q.clone())?);
-    println!("p ** q = {}", (p.clone().pow(&q))?);
-
-    let gz0 = Tensor::cat(&[g.clone(), z.clone()], 0)?;
-    let gz1 = Tensor::cat(&[g.clone(), z.clone()], 1)?;
-
-    println!("gz0 = \n{gz0}");
-    println!("gz1 = \n{gz1}");
-
-    println!("z == g:\n{}", z.eq(&g)?);
-
-    println!("z < g:\n{}", z.lt(&g)?);
-
-    println!("g sum = {}", g.sum_all()?);
-
-    let a = Tensor::arange(0_i64, 3, &gpu)?.reshape((3, 1))?;
-    println!("a = \n{a}");
-
-    let b = Tensor::arange(0_i64, 2, &gpu)?.reshape((1, 2))?;
-    println!("b = \n{b}");
-
-    println!("a + b = \n{}", a.broadcast_add(&b)?);
-
     Ok(())
 }
