@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use candle_core::{Device, Result, Tensor};
 
-use rand::{seq::SliceRandom, thread_rng};
+use rand::{rng, seq::SliceRandom};
 
 #[derive(Debug, Clone)]
 pub struct SyntheticRegressionDataBuilder {
@@ -112,7 +112,7 @@ impl SyntheticRegressionData {
             self.paras.num_train..self.paras.sample_count()
         }
         .collect::<Vec<_>>();
-        indices.shuffle(&mut thread_rng());
+        indices.shuffle(&mut rng());
 
         DatasetRandomIter {
             indices,
