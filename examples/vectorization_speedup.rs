@@ -7,7 +7,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cpu = &Device::Cpu;
     let gpu = &Device::new_cuda(0)?;
 
-    let n = args[1].parse::<usize>()?;
+    let n = args
+        .get(1)
+        .unwrap_or(&"10000000".to_string())
+        .parse::<usize>()?;
     let a_arr = (n..(2 * n)).map(|i| i as f32).collect::<Vec<f32>>();
     let b_arr = ((n * 2)..(n * 3)).map(|i| i as f32).collect::<Vec<f32>>();
     let mut c_arr = vec![0f32; n];

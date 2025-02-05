@@ -71,16 +71,17 @@ NA,NA,140000"#
     let target = df2.clone().lazy().select([col("Price")]).collect()?;
     println!("target:\n{}", target);
 
-    let cpu = Device::Cpu;
     let input_buffer = inputs.to_ndarray::<Float32Type>(IndexOrder::C)?;
-    let x_tensor = Tensor::from_slice(input_buffer.as_slice().unwrap(), inputs.shape(), &cpu)?;
+
+    let device = Device::new_cuda(0).unwrap();
+    let x_tensor = Tensor::from_slice(input_buffer.as_slice().unwrap(), inputs.shape(), &device)?;
     let y_tensor = Tensor::from_slice(
         target
             .to_ndarray::<Float32Type>(IndexOrder::C)?
             .as_slice()
             .unwrap(),
         target.shape(),
-        &cpu,
+        &device,
     )?
     .transpose(0, 1)?;
 
