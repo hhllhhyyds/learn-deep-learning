@@ -12,14 +12,22 @@ pub struct LinearModel {
     lr: f32,
     weights: Var,
     bias: Var,
+    weight_decay: f32,
 }
 
 impl LinearModel {
-    pub fn new(num_inputs: usize, lr: f32, sigma: f32, device: Arc<Device>) -> Result<Self> {
+    pub fn new(
+        num_inputs: usize,
+        lr: f32,
+        sigma: f32,
+        weight_decay: f32,
+        device: Arc<Device>,
+    ) -> Result<Self> {
         Ok(Self {
             lr,
             weights: Var::randn(0_f32, sigma, (num_inputs, 1), &device)?,
             bias: Var::zeros(1, candle_core::DType::F32, &device)?,
+            weight_decay,
         })
     }
 
@@ -27,8 +35,9 @@ impl LinearModel {
         samples.matmul(&self.weights)?.broadcast_add(&self.bias)
     }
 
-    pub fn loss(prediction: &Tensor, targets: &Tensor) -> Result<Tensor> {
-        ((prediction - targets)?.powf(2.0)? / 2_f64)?.mean_all()
+    pub fn loss(&self, prediction: &Tensor, targets: &Tensor) -> Result<Tensor> {
+        ((prediction - targets)?.powf(2.0)? / 2_f64)?.mean_all()?
+            + (self.weight_decay as f64 / 2.) * self.weights.as_tensor().powf(2.0)?.sum_all()?
     }
 
     pub fn step(&mut self, loss: &Tensor) -> Result<()> {
@@ -43,49 +52,54 @@ impl LinearModel {
 }
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let max_epoch = 5;
+    let max_epoch = 10;
 
     let device = Arc::new(Device::new_cuda(0)?);
 
-    let data =
-        SyntheticRegressionDataBuilder::new(Tensor::from_slice(&[2f32, -3.4], (2, 1), &device)?)
-            .device(device.clone())
-            .bias(4.2)
-            .build()?;
+    let num_inputs = 200;
+    let data = SyntheticRegressionDataBuilder::new(Tensor::from_slice(
+        &vec![0.01f32; num_inputs],
+        (num_inputs, 1),
+        &device,
+    )?)
+    .device(device.clone())
+    .bias(0.05)
+    .noise(0.01)
+    .num_train(20)
+    .num_validate(100)
+    .build()?;
 
-    let mut model = LinearModel::new(2, 0.03, 0.01, device)?;
+    let mut model = LinearModel::new(num_inputs, 0.01, 0.01, 0.0, device)?;
 
     let mut train_progress = Vec::new();
     let mut val_progress = Vec::new();
 
     for _ in 0..max_epoch {
         let training_batcher = Batcher::new2(data.iter(true))
-            .batch_size(32)
+            .batch_size(5)
             .return_last_incomplete_batch(false);
         for (i, batch) in training_batcher.enumerate() {
             let (features, target) = batch?;
-            assert!(features.dim(0)? == 32);
-            assert!(target.dim(0)? == 32);
 
-            let loss = LinearModel::loss(&model.forward(&features)?, &target)?;
+            let loss = model.loss(&model.forward(&features)?, &target)?;
             model.step(&loss)?;
 
             train_progress.push((i, loss.to_scalar::<f32>()?));
         }
 
         let validate_batcher = Batcher::new2(data.iter(false))
-            .batch_size(32)
+            .batch_size(5)
             .return_last_incomplete_batch(false);
         for (i, batch) in validate_batcher.enumerate() {
             let (features, target) = batch?;
-            let loss = LinearModel::loss(&model.forward(&features)?, &target)?;
+            let loss = model.loss(&model.forward(&features)?, &target)?;
 
             val_progress.push((i, loss.to_scalar::<f32>()?));
         }
 
         println!(
             "error in estimating weights:\n{}",
-            (data.weights() - model.weights.as_tensor())?
+            (data.weights() - model.weights.as_tensor())?.reshape((1, num_inputs))?
         );
         println!(
             "error in estimating bias:\n{}",
@@ -93,7 +107,12 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    common::plot_progress(&train_progress, &val_progress, false);
+    println!(
+        "L2 norm of weight = {}",
+        model.weights.as_tensor().powf(2.0)?.sum_all()?
+    );
+
+    common::plot_progress(&train_progress, &val_progress, true);
 
     Ok(())
 }

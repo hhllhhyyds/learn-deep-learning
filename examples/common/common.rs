@@ -1,6 +1,10 @@
 use plotpy::{Curve, Plot};
 
-pub fn plot_progress(train_progress: &[(usize, f32)], val_progress: &[(usize, f32)]) {
+pub fn plot_progress(
+    train_progress: &[(usize, f32)],
+    val_progress: &[(usize, f32)],
+    set_log_y: bool,
+) {
     fn batch_to_epoch(batch_progress: &[(usize, f32)]) -> Vec<(f32, f32)> {
         let max_batch = batch_progress.iter().map(|p| p.0).max().unwrap() + 1;
 
@@ -41,6 +45,7 @@ pub fn plot_progress(train_progress: &[(usize, f32)], val_progress: &[(usize, f3
     add_points_to_curve(&mut val_curve, &val_progress);
 
     let mut plot = Plot::new();
+    plot.set_log_y(set_log_y);
     plot.add(&train_curve).set_labels("epoch", "loss");
     plot.add(&val_curve);
     plot.legend();

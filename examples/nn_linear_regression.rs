@@ -61,7 +61,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         );
     }
 
-    common::plot_progress(&train_progress, &val_progress);
+    common::plot_progress(&train_progress, &val_progress, false);
 
     Ok(())
 }
