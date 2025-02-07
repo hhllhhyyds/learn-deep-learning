@@ -1,59 +1,62 @@
 use std::sync::Arc;
 
-use candle_core::{Device, Error, Result, Tensor, Var};
+use candle_core::{Device, Result, Tensor, Var};
 use candle_datasets::Batcher;
+use candle_nn::optim::Optimizer;
+
+use learn_deep_learning::linear_model::LinearModel;
 use learn_deep_learning::synthetic_regression_data::SyntheticRegressionDataBuilder;
 
 #[path = "common/common.rs"]
 mod common;
 
 #[derive(Debug, Clone)]
-pub struct LinearModel {
-    lr: f32,
-    weights: Var,
-    bias: Var,
+pub struct SgdOpt {
+    vars: Vec<Var>,
+    learning_rate: f64,
 }
 
-impl LinearModel {
-    pub fn new(num_inputs: usize, lr: f32, sigma: f32, device: Arc<Device>) -> Result<Self> {
+impl Optimizer for SgdOpt {
+    type Config = f64;
+
+    fn new(vars: Vec<Var>, config: Self::Config) -> Result<Self> {
         Ok(Self {
-            lr,
-            weights: Var::randn(0_f32, sigma, (num_inputs, 1), &device)?,
-            bias: Var::zeros(1, candle_core::DType::F32, &device)?,
+            vars,
+            learning_rate: config,
         })
     }
 
-    pub fn forward(&self, samples: &Tensor) -> Result<Tensor> {
-        samples.matmul(&self.weights)?.broadcast_add(&self.bias)
-    }
-
-    pub fn loss(prediction: &Tensor, targets: &Tensor) -> Result<Tensor> {
-        ((prediction - targets)?.powf(2.0)? / 2_f64)?.mean_all()
-    }
-
-    pub fn step(&mut self, loss: &Tensor) -> Result<()> {
-        let grads = loss.backward()?;
-        for param in [&self.weights, &self.bias] {
-            let grad = grads.get(param).ok_or(Error::debug("failed to get grad"))?;
-            param.set(&(param.as_tensor() - (self.lr as f64 * grad)?)?)?;
+    fn step(&mut self, grads: &candle_core::backprop::GradStore) -> Result<()> {
+        for var in self.vars.iter() {
+            if let Some(grad) = grads.get(var) {
+                var.set(&var.sub(&(grad * self.learning_rate)?)?)?;
+            }
         }
-
         Ok(())
+    }
+
+    fn learning_rate(&self) -> f64 {
+        self.learning_rate
+    }
+
+    fn set_learning_rate(&mut self, lr: f64) {
+        self.learning_rate = lr
     }
 }
 
 fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
-    let max_epoch = 5;
+    let max_epoch = 3;
 
     let device = Arc::new(Device::new_cuda(0)?);
 
     let data =
-        SyntheticRegressionDataBuilder::new(Tensor::from_slice(&[2f32, -3.4], (2, 1), &device)?)
+        SyntheticRegressionDataBuilder::new(Tensor::from_slice(&[2f64, -3.4], (2, 1), &device)?)
             .device(device.clone())
             .bias(4.2)
-            .build()?;
+            .build::<f64>()?;
 
-    let mut model = LinearModel::new(2, 0.03, 0.01, device)?;
+    let model = LinearModel::new::<f64>(2, 0.01, device)?;
+    let mut opt = SgdOpt::new(model.vars(), 0.03)?;
 
     let mut train_progress = Vec::new();
     let mut val_progress = Vec::new();
@@ -67,10 +70,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             assert!(features.dim(0)? == 32);
             assert!(target.dim(0)? == 32);
 
-            let loss = LinearModel::loss(&model.forward(&features)?, &target)?;
-            model.step(&loss)?;
+            let loss = ((model.forward(&features)? - target)?.powf(2.0)? / 2.)?.mean_all()?;
+            opt.backward_step(&loss)?;
 
-            train_progress.push((i, loss.to_scalar::<f32>()?));
+            train_progress.push((i, loss.to_scalar::<f64>()? as f32));
         }
 
         let validate_batcher = Batcher::new2(data.iter(false))
@@ -78,9 +81,9 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .return_last_incomplete_batch(false);
         for (i, batch) in validate_batcher.enumerate() {
             let (features, target) = batch?;
-            let loss = LinearModel::loss(&model.forward(&features)?, &target)?;
+            let loss = ((model.forward(&features)? - target)?.powf(2.0)? / 2.)?.mean_all()?;
 
-            val_progress.push((i, loss.to_scalar::<f32>()?));
+            val_progress.push((i, loss.to_scalar::<f64>()? as f32));
         }
 
         println!(
@@ -89,7 +92,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         );
         println!(
             "error in estimating bias:\n{}",
-            (data.bias() as f64 - model.bias.as_tensor())?
+            (data.bias() - model.bias.as_tensor())?
         );
     }
 

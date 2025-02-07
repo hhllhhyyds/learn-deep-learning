@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use candle_core::{Device, Result, Tensor};
+use candle_core::{Device, FloatDType, Result, Tensor};
 
 use rand::{rng, seq::SliceRandom};
 
 #[derive(Debug, Clone)]
 pub struct SyntheticRegressionDataBuilder {
     pub weights: Tensor,
-    pub bias: f32,
-    pub noise: f32,
+    pub bias: f64,
+    pub noise: f64,
     pub num_train: usize,
     pub num_validate: usize,
     pub device: Arc<Device>,
@@ -21,7 +21,7 @@ impl SyntheticRegressionDataBuilder {
 
         Self {
             weights,
-            bias: f32::default(),
+            bias: 0.,
             noise: 0.01,
             num_train: 1000,
             num_validate: 1000,
@@ -34,12 +34,12 @@ impl SyntheticRegressionDataBuilder {
         self
     }
 
-    pub fn bias(mut self, bias: f32) -> Self {
+    pub fn bias(mut self, bias: f64) -> Self {
         self.bias = bias;
         self
     }
 
-    pub fn noise(mut self, noise: f32) -> Self {
+    pub fn noise(mut self, noise: f64) -> Self {
         self.noise = noise;
         self
     }
@@ -58,13 +58,15 @@ impl SyntheticRegressionDataBuilder {
         self.num_train + self.num_validate
     }
 
-    pub fn build(&self) -> Result<SyntheticRegressionData> {
+    pub fn build<T: FloatDType>(&self) -> Result<SyntheticRegressionData> {
+        assert!(self.weights.dtype() == T::DTYPE);
+
         let d = self.weights.shape().dim(0)?;
         let n = self.sample_count();
 
-        let samples = Tensor::randn(0f32, 1f32, (n, d), &self.device)?;
-        let noise = (Tensor::randn(0f32, 1f32, (n, 1), &self.device)? * self.noise as f64)?;
-        let targets = (self.bias as f64 + (samples.matmul(&self.weights)? + noise)?)?;
+        let samples = Tensor::randn(T::zero(), T::one(), (n, d), &self.device)?;
+        let noise = (Tensor::randn(T::zero(), T::one(), (n, 1), &self.device)? * self.noise)?;
+        let targets = (self.bias + (samples.matmul(&self.weights)? + noise)?)?;
 
         Ok(SyntheticRegressionData {
             samples,
@@ -125,7 +127,7 @@ impl SyntheticRegressionData {
         self.paras.weights.clone()
     }
 
-    pub fn bias(&self) -> f32 {
+    pub fn bias(&self) -> f64 {
         self.paras.bias
     }
 }

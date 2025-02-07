@@ -16,13 +16,13 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     let device = Arc::new(Device::new_cuda(0)?);
 
     let data =
-        SyntheticRegressionDataBuilder::new(Tensor::from_slice(&[2f32, -3.4], (2, 1), &device)?)
+        SyntheticRegressionDataBuilder::new(Tensor::from_slice(&[2f64, -3.4], (2, 1), &device)?)
             .device(device.clone())
             .bias(4.2)
-            .build()?;
+            .build::<f64>()?;
 
     let varmap = VarMap::new();
-    let vb = VarBuilder::from_varmap(&varmap, DType::F32, &device);
+    let vb = VarBuilder::from_varmap(&varmap, DType::F64, &device);
     let model = candle_nn::linear(2, 1, vb.pp("linear"))?;
     let mut opt = SGD::new(varmap.all_vars(), 0.03)?;
 
@@ -41,14 +41,14 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             let loss = &model.forward(&features)?.sub(&target)?.sqr()?.mean_all()?;
             opt.backward_step(loss)?;
 
-            train_progress.push((i, loss.to_scalar::<f32>()?));
+            train_progress.push((i, loss.to_scalar::<f64>()? as f32));
         }
 
         for (i, batch) in validate_batcher.enumerate() {
             let (features, target) = batch?;
             let loss = &model.forward(&features)?.sub(&target)?.sqr()?.mean_all()?;
 
-            val_progress.push((i, loss.to_scalar::<f32>()?));
+            val_progress.push((i, loss.to_scalar::<f64>()? as f32));
         }
 
         println!(
@@ -57,7 +57,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         );
         println!(
             "error in estimating bias:\n{}",
-            (data.bias() as f64 - model.bias().unwrap())?
+            (data.bias() - model.bias().unwrap())?
         );
     }
 

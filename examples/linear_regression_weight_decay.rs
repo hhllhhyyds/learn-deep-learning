@@ -1,53 +1,53 @@
 use std::sync::Arc;
 
-use candle_core::{Device, Error, Result, Tensor, Var};
+use candle_core::{Device, Result, Tensor, Var};
 use candle_datasets::Batcher;
-use learn_deep_learning::synthetic_regression_data::SyntheticRegressionDataBuilder;
+use candle_nn::Optimizer;
+use learn_deep_learning::{
+    linear_model::LinearModel, synthetic_regression_data::SyntheticRegressionDataBuilder,
+};
 
 #[path = "common/common.rs"]
 mod common;
 
 #[derive(Debug, Clone)]
-pub struct LinearModel {
-    lr: f32,
-    weights: Var,
-    bias: Var,
-    weight_decay: f32,
+pub struct SgdOpt {
+    vars: Vec<Var>,
+    learning_rate: f64,
+    weight_decay: f64,
 }
 
-impl LinearModel {
-    pub fn new(
-        num_inputs: usize,
-        lr: f32,
-        sigma: f32,
-        weight_decay: f32,
-        device: Arc<Device>,
-    ) -> Result<Self> {
+pub struct SgdOptParam {
+    pub learning_rate: f64,
+    pub weight_decay: f64,
+}
+
+impl Optimizer for SgdOpt {
+    type Config = SgdOptParam;
+
+    fn new(vars: Vec<Var>, config: Self::Config) -> Result<Self> {
         Ok(Self {
-            lr,
-            weights: Var::randn(0_f32, sigma, (num_inputs, 1), &device)?,
-            bias: Var::zeros(1, candle_core::DType::F32, &device)?,
-            weight_decay,
+            vars,
+            learning_rate: config.learning_rate,
+            weight_decay: config.weight_decay,
         })
     }
 
-    pub fn forward(&self, samples: &Tensor) -> Result<Tensor> {
-        samples.matmul(&self.weights)?.broadcast_add(&self.bias)
-    }
-
-    pub fn loss(&self, prediction: &Tensor, targets: &Tensor) -> Result<Tensor> {
-        ((prediction - targets)?.powf(2.0)? / 2_f64)?.mean_all()?
-            + (self.weight_decay as f64 / 2.) * self.weights.as_tensor().powf(2.0)?.sum_all()?
-    }
-
-    pub fn step(&mut self, loss: &Tensor) -> Result<()> {
-        let grads = loss.backward()?;
-        for param in [&self.weights, &self.bias] {
-            let grad = grads.get(param).ok_or(Error::debug("failed to get grad"))?;
-            param.set(&(param.as_tensor() - (self.lr as f64 * grad)?)?)?;
+    fn step(&mut self, grads: &candle_core::backprop::GradStore) -> Result<()> {
+        for var in self.vars.iter() {
+            if let Some(grad) = grads.get(var) {
+                var.set(&var.sub(&(grad * self.learning_rate)?)?)?;
+            }
         }
-
         Ok(())
+    }
+
+    fn learning_rate(&self) -> f64 {
+        self.learning_rate
+    }
+
+    fn set_learning_rate(&mut self, lr: f64) {
+        self.learning_rate = lr
     }
 }
 
@@ -67,9 +67,16 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
     .noise(0.01)
     .num_train(20)
     .num_validate(100)
-    .build()?;
+    .build::<f32>()?;
 
-    let mut model = LinearModel::new(num_inputs, 0.01, 0.01, 0.0, device)?;
+    let model = LinearModel::new::<f32>(num_inputs, 0.01, device)?;
+    let mut opt = SgdOpt::new(
+        model.vars(),
+        SgdOptParam {
+            learning_rate: 0.01,
+            weight_decay: 3.,
+        },
+    )?;
 
     let mut train_progress = Vec::new();
     let mut val_progress = Vec::new();
@@ -81,8 +88,10 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         for (i, batch) in training_batcher.enumerate() {
             let (features, target) = batch?;
 
-            let loss = model.loss(&model.forward(&features)?, &target)?;
-            model.step(&loss)?;
+            let loss = (((model.forward(&features)? - target)?.powf(2.0)? / 2_f64)?.mean_all()?
+                + (opt.weight_decay / 2.) * model.weights.as_tensor().powf(2.0)?.sum_all()?)?;
+
+            opt.backward_step(&loss)?;
 
             train_progress.push((i, loss.to_scalar::<f32>()?));
         }
@@ -92,7 +101,8 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
             .return_last_incomplete_batch(false);
         for (i, batch) in validate_batcher.enumerate() {
             let (features, target) = batch?;
-            let loss = model.loss(&model.forward(&features)?, &target)?;
+            let loss = (((model.forward(&features)? - target)?.powf(2.0)? / 2_f64)?.mean_all()?
+                + (opt.weight_decay / 2.) * model.weights.as_tensor().powf(2.0)?.sum_all()?)?;
 
             val_progress.push((i, loss.to_scalar::<f32>()?));
         }
@@ -103,7 +113,7 @@ fn main() -> std::result::Result<(), Box<dyn std::error::Error>> {
         );
         println!(
             "error in estimating bias:\n{}",
-            (data.bias() as f64 - model.bias.as_tensor())?
+            (data.bias() - model.bias.as_tensor())?
         );
     }
 
